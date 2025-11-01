@@ -1,0 +1,5 @@
+{
+  "name": "IMS NSIT Attendance Agent",
+  "description": "An intelligent agent that allows users to query their attendance records from the IMS NSIT database using natural language, powered by the Gemini API.",
+  "requestFramePermissions": []
+}
