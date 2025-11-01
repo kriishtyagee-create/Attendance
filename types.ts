@@ -1,4 +1,3 @@
-
 export enum MessageSender {
   USER = 'user',
   AGENT = 'agent',
@@ -7,6 +6,8 @@ export enum MessageSender {
 export interface ChatMessage {
   sender: MessageSender;
   text: string;
+  // optional id to make stable keys possible in lists
+  id?: string;
 }
 
 export interface AttendanceRecord {
