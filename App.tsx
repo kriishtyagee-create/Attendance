@@ -1,7 +1,5 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageSender } from './types';
-import type { ChatMessage as ChatMessageType, ChatHistoryItem } from './types';
+import { MessageSender, type ChatMessage as ChatMessageType, type ChatHistoryItem } from './types';
 import { runConversation } from './services/geminiService';
 import ChatMessage from './components/ChatMessage';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -9,7 +7,12 @@ import HistoryPanel from './components/HistoryPanel';
 
 const WELCOME_MESSAGE: ChatMessageType = {
   sender: MessageSender.AGENT,
-  text: "Hello! I am the IMS NSIT Attendance Agent. I can help you with your attendance records. \n\nTry asking me something like:\n- \"What is the attendance for student 2021UCA1234?\"\n- \"Check attendance in Data Structures for 2021UIT5678\"",
+  text: `Hello! I am the IMS NSIT Attendance Agent. I can help you with your attendance records.
+
+Try asking me something like:
+- "What is the attendance for student 2021UCA1234?"
+- "Check attendance for subject CS101 for semester 3"
+`,
 };
 
 const App: React.FC = () => {
@@ -18,14 +21,14 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessageType[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Load history from localStorage on initial render
   useEffect(() => {
     try {
       const savedHistory = localStorage.getItem('chatHistory');
       if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
+        setHistory(JSON.parse(savedHistory) as ChatHistoryItem[]);
       }
     } catch (error) {
       console.error('Failed to load chat history from localStorage:', error);
@@ -44,18 +47,18 @@ const App: React.FC = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
-  
+
   const updateHistory = (chatId: string, newMessages: ChatMessageType[]) => {
-      setHistory(prev => {
-        const existingChat = prev.find(chat => chat.id === chatId);
-        if (existingChat) {
-          // Update existing chat
-          return prev.map(chat =>
-            chat.id === chatId ? { ...chat, messages: newMessages } : chat
-          );
-        }
-        return prev;
-      });
+    setHistory(prev => {
+      const existingChat = prev.find(chat => chat.id === chatId);
+      if (existingChat) {
+        // Update existing chat
+        return prev.map(chat =>
+          chat.id === chatId ? { ...chat, messages: newMessages } : chat
+        );
+      }
+      return prev;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,54 +69,56 @@ const App: React.FC = () => {
     const userMessage: ChatMessageType = {
       sender: MessageSender.USER,
       text: trimmedInput,
+      id: `${Date.now()}-user`,
     };
-    
-    let currentChatId = activeChatId;
-    let newMessages: ChatMessageType[];
+
+    let currentChatId: string | null = activeChatId;
+    let newMessages: ChatMessageType[] = [];
 
     if (currentChatId) {
-       const currentChat = history.find(chat => chat.id === currentChatId);
-       if(currentChat) {
-           newMessages = [...currentChat.messages, userMessage];
-           setMessages(newMessages);
-           updateHistory(currentChatId, newMessages);
-       } else {
-           // Should not happen, but as a fallback, start a new chat
-           currentChatId = null; 
-       }
-    } 
-    
-    if (!currentChatId) {
-        currentChatId = Date.now().toString();
-        const newChat: ChatHistoryItem = {
-            id: currentChatId,
-            title: trimmedInput.substring(0, 40) + (trimmedInput.length > 40 ? '...' : ''),
-            messages: [WELCOME_MESSAGE, userMessage],
-        };
-        newMessages = newChat.messages;
-        setHistory(prev => [newChat, ...prev]);
-        setActiveChatId(currentChatId);
+      const currentChat = history.find(chat => chat.id === currentChatId);
+      if (currentChat) {
+        newMessages = [...currentChat.messages, userMessage];
         setMessages(newMessages);
+        updateHistory(currentChatId, newMessages);
+      } else {
+        // fallback - start a new chat
+        currentChatId = null;
+      }
+    }
+
+    if (!currentChatId) {
+      currentChatId = Date.now().toString();
+      const newChat: ChatHistoryItem = {
+        id: currentChatId,
+        title: trimmedInput.substring(0, 40) + (trimmedInput.length > 40 ? '...' : ''),
+        messages: [{ ...WELCOME_MESSAGE, id: `${Date.now()}-welcome` }, userMessage],
+      };
+      newMessages = newChat.messages;
+      setHistory(prev => [newChat, ...prev]);
+      setActiveChatId(currentChatId);
+      setMessages(newMessages);
     }
 
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const agentResponseText = await runConversation(trimmedInput);
+      const agentResponseText: string = await runConversation(trimmedInput);
       const agentMessage: ChatMessageType = {
         sender: MessageSender.AGENT,
         text: agentResponseText,
+        id: `${Date.now()}-agent`,
       };
       const finalMessages = [...newMessages, agentMessage];
       setMessages(finalMessages);
       updateHistory(currentChatId, finalMessages);
-
     } catch (error) {
       console.error('Failed to get response from agent:', error);
       const errorMessage: ChatMessageType = {
         sender: MessageSender.AGENT,
         text: 'Sorry, I ran into an issue. Please try again.',
+        id: `${Date.now()}-error`,
       };
       const finalMessages = [...newMessages, errorMessage];
       setMessages(finalMessages);
@@ -161,13 +166,13 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="max-w-4xl mx-auto space-y-6">
             {messages.map((msg, index) => (
-              <ChatMessage key={index} message={msg} />
+              <ChatMessage key={`${msg.sender}-${index}-${msg.text.slice(0,20)}`} message={msg} />
             ))}
             {isLoading && (
               <div className="flex justify-start gap-3">
                 <div className="w-6 h-6 flex-shrink-0">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-teal-400">
-                    <path d="M11.25 4.533A9.707 9.707 0 0 0 6 3a9.735 9.735 0 0 0-3.25.555.75.75 0 0 0-.5.707v1.286a.75.75 0 0 0 .75.75h.008a7.207 7.207 0 0 1 4.5 4.5h.008a.75.75 0 0 0 .75.75v1.286a.75.75 0 0 0 .707.5A9.735 9.735 0 0 0 12 18a9.707 9.707 0 0 0 1.533-5.25.75.75 0 0 0-.427-.686 4.5 4.5 0 0 1-2.13-2.13.75.75 0 0 0-.686-.427ZM12.25 21a9.735 9.735 0 0 0 3.25-.555.75.75 0 0 0 .5-.707v-1.286a.75.75 0 0 0-.75-.75h-.008a7.208 7.208 0 0 1-4.5-4.5h-.008a.75.75 0 0 0-.75-.75v-1.286a.75.75 0 0 0-.707-.5A9.735 9.735 0 0 0 9 6a9.707 9.707 0 0 0-1.533 5.25.75.75 0 0 0 .427.686 4.5 4.5 0 0 1 2.13 2.13.75.75 0 0 0 .686.427Z" />
+                    <path d="M11.25 4.533A9.707 9.707 0 0 0 6 3a9.735 9.735 0 0 0-3.25.555.75.75 0 0 0-.5.707v1.286a.75.75 0 0 0 .75.75h.008a7.207 7.207 0 0 1 4.5 4.5h.008a.75.75 0 0 0 .75.75v1.2" />
                   </svg>
                 </div>
                 <div className="bg-gray-700 text-gray-300 rounded-2xl rounded-bl-none px-4 py-3">
@@ -192,8 +197,8 @@ const App: React.FC = () => {
               />
               <button
                 type="submit"
-                disabled={isLoading || !inputValue.trim()}
-                className="p-2 rounded-full bg-teal-600 hover:bg-teal-500 disabled:bg-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-teal-500 transition-colors"
+                disabled={isLoading || inputValue.trim().length === 0}
+                className="p-2 rounded-full bg-teal-600 hover:bg-teal-500 disabled:bg-gray-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -201,7 +206,7 @@ const App: React.FC = () => {
                   fill="currentColor"
                   className="w-6 h-6 text-white"
                 >
-                  <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+                  <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.5" />
                 </svg>
               </button>
             </form>
